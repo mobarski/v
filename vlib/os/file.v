@@ -2,6 +2,9 @@ module os
 
 pub struct File {
 	cfile  voidptr // Using void* instead of FILE*
+mut:
+	buf_len int = 0
+	buf     byteptr = 0
 pub:
 	fd     int
 pub mut:
@@ -79,6 +82,26 @@ pub fn (f &File) read_bytes_at(size, pos int) []byte {
 	return arr[0..nreadbytes]
 }
 
+// read_line reads one line (or f.buf_len character) from the file
+pub fn (mut f File) read_line() ?(string,bool) {
+	if f.buf==0 { return error('read_line buffer not allocated') }
+	if C.fgets(f.buf, f.buf_len+1, f.cfile) == 0 { return none }
+	mut is_prefix := true
+	mut len := vstrlen(f.buf)
+	// check and strip EOL - before creating V's string
+	if len>0 && unsafe{f.buf[len-1]} == `\n` {
+		unsafe{f.buf[len-1] = `0`}
+		len--
+		is_prefix = false
+		if len>0 && unsafe{f.buf[len-1]} == `\r` {
+			unsafe{f.buf[len-1] = `0`}
+			len--
+		}
+	}
+	line := tos(f.buf, len)
+	return line, is_prefix
+}
+
 // **************************** Utility  ops ***********************
 // write any unwritten data in stream's buffer
 pub fn (mut f File) flush() {
@@ -86,4 +109,13 @@ pub fn (mut f File) flush() {
 		return
 	}
 	C.fflush(f.cfile)
+}
+
+// set_buffer allocates the buffer for the read_line calls
+pub fn (mut f File) set_buffer(size int) {
+	if f.buf != 0 && f.buf_len > 0 {
+		free(f.buf)
+	}
+	f.buf = malloc(size+1)
+	f.buf_len = size
 }

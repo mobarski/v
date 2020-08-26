@@ -187,6 +187,11 @@ pub fn (mut f File) close() {
 	*/
 	C.fflush(f.cfile)
 	C.fclose(f.cfile)
+	if f.buf != 0 {
+		free(f.buf)
+		f.buf = 0
+		f.buf_len = 0
+	}
 }
 
 pub fn debugger_present() bool {
