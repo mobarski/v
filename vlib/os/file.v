@@ -113,7 +113,7 @@ pub fn (mut f File) readline(size ...int) ?string {
 	
 	// allocate the buffer if there is none
 	if f.buf==0 {
-		f.buf_len = min(2, limit) // TODO const
+		f.buf_len = min(512, limit) // TODO const
 		f.buf = malloc(f.buf_len)
 	}
 	
