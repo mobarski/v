@@ -83,6 +83,7 @@ pub fn (f &File) read_bytes_at(size, pos int) []byte {
 }
 
 // read_line reads one line (or f.buf_len character) from the file
+// modeled after Go's Reader.ReadLine
 pub fn (mut f File) read_line() ?(string,bool) {
 	if f.buf==0 { return error('read_line buffer not allocated') }
 	if C.fgets(f.buf, f.buf_len+1, f.cfile) == 0 { return none }
@@ -102,6 +103,50 @@ pub fn (mut f File) read_line() ?(string,bool) {
 	return line, is_prefix
 }
 
+
+// modeled after Python's readline but with trailing EOL characters removal
+pub fn (mut f File) readline(size ...int) ?string {
+	// TODO check closed ?
+	
+	// optional parameter - limit maximum buffer size
+	limit := if size.len>0 && size[0]>1 { size[0] } else { 0x7FFFFFFF } // i32_max
+	
+	// allocate the buffer if there is none
+	if f.buf==0 {
+		f.buf_len = min(2, limit) // TODO const
+		f.buf = malloc(f.buf_len)
+	}
+	
+	mut len := 0
+	mut offset := 0
+	for {
+		// read from file into the buffer
+		cap := f.buf_len-offset // TODO limit
+		if C.fgets(unsafe{f.buf+offset}, cap, f.cfile) == 0 { return none } // TEST 
+		len = vstrlen(unsafe{f.buf+offset})
+		
+		if len>0 && unsafe{f.buf[len+offset-1]} == `\n` { // EOL
+			// strip trailing EOL characters (\n or \r\n) in the buffer
+			unsafe{f.buf[len+offset-1] = `0`}
+			len--
+			if len>0 && unsafe{f.buf[len+offset-1]} == `\r` {
+				unsafe{f.buf[len+offset-1] = `0`}
+				len--
+			}
+			break
+		} else { // no EOL
+			if f.buf_len >= limit { break } // limit reached - incomplete line
+			// grow the buffer - double it up to the limit
+			f.buf_len *= 2
+			f.buf_len = min(f.buf_len, limit)
+			f.buf = v_realloc(f.buf, u32(f.buf_len))
+			offset += len
+		}
+	}
+	
+	return tos(f.buf, offset+len)
+}
+
 // **************************** Utility  ops ***********************
 // write any unwritten data in stream's buffer
 pub fn (mut f File) flush() {
@@ -118,4 +163,8 @@ pub fn (mut f File) set_buffer(size int) {
 	}
 	f.buf = malloc(size+1)
 	f.buf_len = size
+}
+
+fn min(a int, b int) int {
+	return if a<b {a} else {b}
 }
